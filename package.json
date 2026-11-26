@@ -1,6 +1,6 @@
 {
   "name": "to-cloneable",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Strip whatever structuredClone, postMessage or a worker thread would reject, and keep everything else.",
   "keywords": [
     "structuredClone",
