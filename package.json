@@ -1,0 +1,71 @@
+{
+  "name": "to-cloneable",
+  "version": "0.0.0",
+  "description": "Strip whatever structuredClone, postMessage or a worker thread would reject, and keep everything else.",
+  "keywords": [
+    "structuredClone",
+    "structured-clone",
+    "postMessage",
+    "DataCloneError",
+    "worker",
+    "serialize",
+    "sanitize"
+  ],
+  "license": "MIT",
+  "author": "Aviv Keller",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/avivkeller/to-cloneable.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "bun": "./src/index.bun.js",
+      "deno": "./src/index.deno.js",
+      "node": "./src/index.node.js",
+      "default": "./src/index.browser.js"
+    },
+    "./node": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.node.js"
+    },
+    "./deno": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.deno.js"
+    },
+    "./bun": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.bun.js"
+    },
+    "./browser": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.browser.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./src/index.d.ts",
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit",
+    "generate": "node generate/index.mjs",
+    "generate:browser": "node generate/index.mjs browser",
+    "changeset": "changeset",
+    "release": "changeset publish",
+    "test:browser": "node scripts/browser.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@webref/idl": "^3.87.1",
+    "playwright": "^1.65.1"
+  }
+}

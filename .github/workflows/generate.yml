@@ -1,0 +1,153 @@
+name: Regenerate
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: generate
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Node.js
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: npm ci --ignore-scripts && npm update --ignore-scripts playwright @webref/idl
+      - run: node generate/index.mjs > notes-node.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: generated-node
+          path: |
+            src/index.node.js
+            notes-node.md
+          if-no-files-found: error
+
+  deno:
+    name: Deno
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: npm ci --ignore-scripts && npm update --ignore-scripts playwright @webref/idl
+      - run: deno run --allow-all generate/index.mjs > notes-deno.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: generated-deno
+          path: |
+            src/index.deno.js
+            notes-deno.md
+          if-no-files-found: error
+
+  bun:
+    name: Bun
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: npm ci --ignore-scripts && npm update --ignore-scripts playwright @webref/idl
+      - run: bun generate/index.mjs > notes-bun.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: generated-bun
+          path: |
+            src/index.bun.js
+            notes-bun.md
+          if-no-files-found: error
+
+  browser:
+    name: Browsers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: npm ci --ignore-scripts && npm update --ignore-scripts playwright @webref/idl
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: node generate/index.mjs browser > notes-browser.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: generated-browser
+          path: |
+            src/index.browser.js
+            notes-browser.md
+          if-no-files-found: error
+
+  update:
+    name: Open pull request
+    needs: [node, deno, bun, browser]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the generate/update branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: generated-*
+          merge-multiple: true
+      - run: npm ci --ignore-scripts && npm update --ignore-scripts playwright @webref/idl
+      - run: npm test
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: generate/update
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ -z "$(git status --porcelain -- src)" ]; then
+            echo "No entry point changed."
+            exit 0
+          fi
+          {
+            echo 'What `structuredClone` accepts changed in at least one runtime; the diff of `src/index.*.js` is the behavior change. Worth a look before merging:'
+            echo
+            cat notes-*.md
+          } > "$RUNNER_TEMP/body.md"
+          printf -- '---\n"to-cloneable": patch\n---\n\nUpdate the built-in tables to match current runtimes.\n' > .changeset/regenerated.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add src .changeset package.json package-lock.json
+          git commit -m "Regenerate entry points"
+          gh auth setup-git
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base "$BASE" --title "Regenerate entry points" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
+          fi
